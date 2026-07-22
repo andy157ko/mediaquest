@@ -3,7 +3,7 @@
 Ask a question, get a **cited, fact-checked answer built from online videos** —
 so you don't have to watch 10 videos to learn one thing.
 
-It searches YouTube, reads the transcripts (no video download), and uses a
+It searches YouTube (and optionally TikTok), reads the transcripts, and uses a
 **local, free LLM (Ollama)** to synthesize an answer with inline `[n]` citations
 and a cross-source fact-check. No paid API keys anywhere.
 
@@ -21,6 +21,9 @@ query ─▶ search (yt-dlp, keyless) ─▶ transcripts (captions, no download)
 
 - **Free & offline.** Search and transcripts need no API key; the LLM runs
   locally via Ollama.
+- **Multi-platform.** YouTube by default; add TikTok with a toggle/flag — its
+  clips are discovered via web search and transcribed with Whisper, then merged
+  into the same cited answer (see below).
 - **Cited.** Every point is tagged `[n]`; sources are listed at the end.
 - **Fact-checked.** Each claim is marked `✓ corroborated` (multiple videos agree),
   `△ single source`, or `✗ unverified`.
@@ -86,7 +89,21 @@ tracks; each follow-up carries the running conversation for context.
 .venv/bin/python cli.py "is creatine safe" --results 8
 .venv/bin/python cli.py "best gym routine" --json       # machine-readable output
 .venv/bin/python cli.py "learn to solder" --model qwen2.5:7b
+.venv/bin/python cli.py "beginner gym routine" --tiktok  # also pull TikTok clips
 ```
+
+## TikTok (opt-in)
+
+TikTok has no free keyword-search API and no captions, so MediaQuest:
+
+1. **Discovers** clips via a web search for `site:tiktok.com <query>` (free, no
+   key) — sidestepping TikTok's bot-protected search entirely.
+2. **Transcribes** each clip with Whisper (yt-dlp grabs the audio), then folds
+   them into the same cited, fact-checked answer alongside YouTube.
+
+Enable it with the CLI `--tiktok` flag or the **Include TikTok** toggle in the
+web UI. It's slower (every clip is transcribed) and needs `faster-whisper`.
+Silent/meme clips below `MQ_TIKTOK_MIN_CHARS` are dropped automatically.
 
 ## Configuration
 
@@ -101,6 +118,8 @@ All optional, via environment variables:
 | `MQ_TRANSCRIPT_WORKERS` | `2`              | Parallel caption fetches (kept low) |
 | `MQ_WHISPER_FALLBACK` | *(off)*            | `1` = transcribe audio when captions fail |
 | `MQ_WHISPER_MODEL`  | `tiny`               | `tiny` \| `base` \| `small`          |
+| `MQ_TIKTOK_RESULTS` | `6`                  | TikTok clips per query (when enabled)|
+| `MQ_TIKTOK_MIN_CHARS` | `100`              | Drop TikToks with less transcript text |
 | `MQ_MIN_DURATION`   | `60`                 | Skip videos shorter than N seconds  |
 | `MQ_MAX_DURATION`   | `3600`               | Skip videos longer than N seconds   |
 | `MQ_CORROBORATION`  | `2`                  | Sources needed to mark a claim solid|
@@ -114,8 +133,9 @@ mediaquest/
   models.py     Source / Claim / Answer data types
   llm.py        Ollama client — swap here to add Gemini/Groq later
   youtube.py    keyless search + caption transcripts
-  pipeline.py   search → map → reduce → fact-check
-  whisper_stt.py audio-download + local Whisper fallback
+  tiktok.py     web-search discovery + Whisper transcription
+  pipeline.py   multi-platform: search → map → reduce → fact-check
+  whisper_stt.py audio-download + local Whisper (YouTube fallback + TikTok)
 cli.py          terminal entry point
 web/
   server.py     FastAPI backend — streams pipeline.research() over SSE
@@ -127,7 +147,6 @@ just import `pipeline.research(query)`.
 
 ## Roadmap
 
-- **TikTok**: download audio with yt-dlp → transcribe with Whisper → same pipeline.
 - **Web fact-check**: corroborate claims against text sources, not just other videos.
 - **Swap in a free cloud LLM** (Gemini/Groq) for much faster synthesis at scale —
   a one-file change in `mediaquest/llm.py`.

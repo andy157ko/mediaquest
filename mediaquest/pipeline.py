@@ -17,7 +17,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable, List, Optional
 
-from . import youtube, llm
+from . import youtube, tiktok, llm
 from .config import config
 from .models import Answer, Claim, Source
 
@@ -148,35 +148,59 @@ def _factcheck(query: str, answer_text: str, sources: List[Source]) -> List[Clai
 # --------------------------------------------------------------------------
 # Orchestrator
 # --------------------------------------------------------------------------
-def research(query: str, progress: Optional[Progress] = None) -> Answer:
+def _no_sources_message(platforms: List[str]) -> str:
+    if platforms == ["tiktok"]:
+        return ("Found no usable TikToks — discovery returned nothing, the clips "
+                "had too little speech, or audio download was blocked. Try adding "
+                "YouTube, or rephrasing the query.")
+    if config.whisper_fallback:
+        return ("Found videos, but couldn't get any transcript — even the Whisper "
+                "audio fallback failed (network, or faster-whisper not installed). "
+                "Check the messages above.")
+    return ("Found videos, but none had usable captions — either they lack captions "
+            "or YouTube is temporarily rate-limiting caption requests from your IP. "
+            "Wait a few minutes, or enable the Whisper fallback to transcribe audio "
+            "directly:\n    export MQ_WHISPER_FALLBACK=1   (needs: pip install faster-whisper)")
+
+
+def research(
+    query: str,
+    progress: Optional[Progress] = None,
+    platforms: Optional[List[str]] = None,
+) -> Answer:
     p = progress or _noop
+    platforms = platforms or ["youtube"]
 
-    p(f"Searching YouTube for “{query}”…")
-    candidates = youtube.search(query)
-    if not candidates:
-        return Answer(query=query, summary="No videos found for that query.")
-    p(f"Found {len(candidates)} candidate videos.")
+    sources: List[Source] = []
 
-    p("Fetching transcripts…")
-    sources = youtube.attach_transcripts(candidates, progress=p)
+    if "youtube" in platforms:
+        p(f"Searching YouTube for “{query}”…")
+        yt = youtube.search(query)
+        p(f"Found {len(yt)} YouTube candidates. Fetching transcripts…")
+        yt = youtube.attach_transcripts(yt, progress=p)
+        sources += yt
+
+    if "tiktok" in platforms:
+        p(f"Searching TikTok for “{query}” (via web search)…")
+        tt = tiktok.search(query)
+        p(f"Found {len(tt)} TikTok candidates. Transcribing audio (Whisper)…")
+        tt = tiktok.attach_transcripts(tt, progress=p)
+        sources += tt
+
     if not sources:
-        if config.whisper_fallback:
-            msg = ("Found videos, but couldn't get any transcript — even the "
-                   "Whisper audio fallback failed (network, or faster-whisper "
-                   "not installed). Check the messages above.")
-        else:
-            msg = ("Found videos, but none had usable captions — either they "
-                   "lack captions or YouTube is temporarily rate-limiting caption "
-                   "requests from your IP. Wait a few minutes, or enable the "
-                   "Whisper fallback to transcribe audio directly:\n"
-                   "    export MQ_WHISPER_FALLBACK=1   (needs: pip install faster-whisper)")
-        return Answer(query=query, summary=msg)
+        return Answer(query=query, summary=_no_sources_message(platforms))
+
+    # Contiguous citation numbering across all platforms.
+    for i, s in enumerate(sources, start=1):
+        s.index = i
+
     by_cap = sum(1 for s in sources if s.transcript_source == "captions")
     by_whisper = sum(1 for s in sources if s.transcript_source == "whisper")
-    detail = f"{by_cap} via captions"
-    if by_whisper:
-        detail += f", {by_whisper} via Whisper audio"
-    p(f"{len(sources)} videos have transcripts ({detail}).")
+    yt_n = sum(1 for s in sources if s.platform == "youtube")
+    tt_n = sum(1 for s in sources if s.platform == "tiktok")
+    where = f"{yt_n} YouTube" + (f" + {tt_n} TikTok" if tt_n else "")
+    how = f"{by_cap} captions, {by_whisper} Whisper" if by_cap else f"{by_whisper} Whisper"
+    p(f"{len(sources)} videos with transcripts ({where}; {how}).")
 
     p(f"Reading {len(sources)} videos (extracting key points)…")
     workers = max(1, min(config.concurrency, len(sources)))

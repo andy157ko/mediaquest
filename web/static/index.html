@@ -111,6 +111,10 @@
     font-size: 13px; display: grid; place-items: center; }
   .src img { width: 120px; height: 68px; object-fit: cover; border-radius: 8px;
     background: var(--chip); flex: none; }
+  .thumbph { width: 120px; height: 68px; border-radius: 8px; flex: none;
+    background: var(--chip); color: var(--muted); font-size: 13px; font-weight: 600;
+    display: grid; place-items: center; }
+  .via.tt { color: #ff2d55; background: rgba(255,45,85,.12); }
   .src .meta { flex: 1; min-width: 0; }
   .src .meta a { color: var(--ink); font-weight: 600; text-decoration: none; }
   .src .meta a:hover { color: var(--accent); }
@@ -151,6 +155,8 @@
     <label>Videos <input type="number" id="results" min="2" max="30" value="6" /></label>
     <label><input type="checkbox" id="whisper" checked />
       Whisper fallback <span class="notice">(transcribe audio if captions are blocked)</span></label>
+    <label><input type="checkbox" id="tiktok" />
+      Include TikTok <span class="notice">(slower — every clip is transcribed)</span></label>
   </div>
   <div class="examples" id="examples">
     <button>best gym routine for beginners</button>
@@ -272,14 +278,15 @@ function renderSources(sources){
   $('srcList').innerHTML = sources.map(s => {
     const thumb = s.platform === 'youtube'
       ? `<img src="https://i.ytimg.com/vi/${s.video_id}/mqdefault.jpg" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
-      : '';
+      : `<div class="thumbph">♪ TikTok</div>`;
+    const plat = s.platform === 'tiktok' ? '<span class="via tt">TikTok</span>' : '';
     const via = s.transcript_source === 'whisper'
       ? '<span class="via w">whisper audio</span>'
       : (s.transcript_source === 'captions' ? '<span class="via">captions</span>' : '');
     return `<div class="src" id="src-${s.index}">
       <div class="num">${s.index}</div>${thumb}
       <div class="meta">
-        <a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>${via}
+        <a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>${plat}${via}
         <div class="ch">${esc(s.channel)}</div>
       </div></div>`;
   }).join('');
@@ -315,7 +322,8 @@ function run(query){
   $('go').disabled = true;
   const results = parseInt($('results').value, 10) || 0;
   const whisper = $('whisper').checked ? 1 : 0;
-  const url = `/api/research?q=${encodeURIComponent(query)}&results=${results}&whisper=${whisper}`;
+  const tiktok = $('tiktok').checked ? 1 : 0;
+  const url = `/api/research?q=${encodeURIComponent(query)}&results=${results}&whisper=${whisper}&tiktok=${tiktok}`;
   es = new EventSource(url);
   es.onmessage = ev => {
     const d = JSON.parse(ev.data);

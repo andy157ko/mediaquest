@@ -1,6 +1,7 @@
 # Core — all free, no API keys.
-yt-dlp>=2024.1.0            # keyless YouTube search + (future) audio download
+yt-dlp>=2024.1.0            # keyless YouTube search + audio download (YT + TikTok)
 youtube-transcript-api>=0.6.2  # captions without downloading video
+ddgs>=5.0.0                # keyless web search — TikTok video discovery
 requests>=2.28.0           # talks to local Ollama
 rich>=13.0.0               # nicer CLI output (optional; CLI degrades without it)
 fastapi>=0.110.0           # web UI backend

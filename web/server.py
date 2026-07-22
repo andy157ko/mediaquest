@@ -59,7 +59,7 @@ def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
-def _research_events(query: str, results: int, whisper: bool):
+def _research_events(query: str, results: int, whisper: bool, tiktok: bool):
     """Generator yielding SSE frames: progress* → (result | error) → done."""
     q: "queue.Queue" = queue.Queue()
 
@@ -71,8 +71,12 @@ def _research_events(query: str, results: int, whisper: bool):
             try:
                 if results:
                     config.max_results = results
-                config.whisper_fallback = bool(whisper)
-                answer = pipeline.research(query, progress=progress)
+                # TikTok always needs Whisper (no captions), so enable it too.
+                config.whisper_fallback = bool(whisper) or bool(tiktok)
+                platforms = ["youtube"] + (["tiktok"] if tiktok else [])
+                answer = pipeline.research(
+                    query, progress=progress, platforms=platforms
+                )
                 payload = answer.to_dict()
                 # Only keep a session worth following up on if we got sources.
                 if answer.sources:
@@ -146,9 +150,10 @@ def research(
     q: str = Query(..., min_length=2, description="The question to research"),
     results: int = Query(0, ge=0, le=30),
     whisper: int = Query(0, ge=0, le=1),
+    tiktok: int = Query(0, ge=0, le=1),
 ):
     return StreamingResponse(
-        _research_events(q.strip(), results, bool(whisper)),
+        _research_events(q.strip(), results, bool(whisper), bool(tiktok)),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

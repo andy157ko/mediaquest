@@ -97,6 +97,10 @@ def main() -> int:
         help=f"Ollama model to use (default {config.model}).",
     )
     parser.add_argument(
+        "--tiktok", action="store_true",
+        help="Also include TikTok (needs faster-whisper; slower).",
+    )
+    parser.add_argument(
         "--json", action="store_true", help="Emit the raw result as JSON."
     )
     args = parser.parse_args()
@@ -106,8 +110,17 @@ def main() -> int:
     if args.model:
         config.model = args.model
 
+    platforms = ["youtube"]
+    if args.tiktok:
+        platforms.append("tiktok")
+        config.whisper_fallback = True  # TikTok has no captions
+
     try:
-        answer = pipeline.research(args.query, progress=None if args.json else info)
+        answer = pipeline.research(
+            args.query,
+            progress=None if args.json else info,
+            platforms=platforms,
+        )
     except LLMError as e:
         print(f"\nLLM error: {e}", file=sys.stderr)
         return 2

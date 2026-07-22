@@ -27,6 +27,15 @@ class Config:
     per_source_chars: int = _env_int("MQ_PER_SOURCE_CHARS", 12000)
     request_timeout: int = _env_int("MQ_TIMEOUT", 300)
 
+    # --- Platforms ---
+    # TikTok is opt-in: it has no free keyword search (we discover via web
+    # search) and no captions (every clip is Whisper-transcribed), so it's
+    # slower and lower-signal than YouTube. Enable per-request in the UI/CLI.
+    tiktok_results: int = _env_int("MQ_TIKTOK_RESULTS", 6)
+    # Drop TikToks whose transcript is too short to carry real information
+    # (silent/meme clips). Measured in characters.
+    tiktok_min_chars: int = _env_int("MQ_TIKTOK_MIN_CHARS", 100)
+
     # --- Search ---
     max_results: int = _env_int("MQ_MAX_RESULTS", 10)
     # Cap videos from any single channel so "more results" means broader

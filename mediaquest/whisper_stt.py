@@ -57,8 +57,10 @@ def _download_audio(video_url: str, workdir: str) -> Optional[str]:
         "no_warnings": True,
         "noprogress": True,   # keep the download bar out of our progress stream
         "noplaylist": True,
-        # Prefer a single already-encoded stream so we never invoke ffmpeg.
-        "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio",
+        # Prefer a single audio-only stream (YouTube) so we skip video bytes;
+        # fall back to the best combined file (TikTok has no audio-only) — PyAV
+        # decodes audio from either, so we still never need system ffmpeg.
+        "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
         "outtmpl": out,
     }
     try:
