@@ -132,3 +132,13 @@ just import `pipeline.research(query)`.
 - **Swap in a free cloud LLM** (Gemini/Groq) for much faster synthesis at scale —
   a one-file change in `mediaquest/llm.py`.
 ```
+
+## Notes on use & license
+
+This is a personal/educational project. It relies on `yt-dlp` and
+`youtube-transcript-api` to fetch publicly available video transcripts and
+audio; please use it responsibly, for personal research, and respect the Terms
+of Service and rate limits of the platforms you query. Cited answers are only as
+reliable as their source videos — verify anything important.
+
+Licensed under the [MIT License](LICENSE).
