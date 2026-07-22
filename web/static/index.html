@@ -166,7 +166,7 @@
   </div>
 
   <section id="progress" class="card">
-    <h2 class="sec"><span class="spinner" id="spin"></span>Working…</h2>
+    <h2 class="sec"><span class="spinner" id="spin"></span><span id="progressLabel">Working…</span></h2>
     <pre class="plog" id="plog"></pre>
   </section>
 
@@ -306,13 +306,14 @@ function reset(){
   $('plog').innerHTML = '';
   $('thread').innerHTML = '';
   currentSession = null;
+  $('progressLabel').textContent = 'Working…';
   $('progress').classList.add('on');
   $('spin').style.display = 'inline-block';
 }
 
 function finish(){
-  $('spin').style.display = 'none';
-  $('go').disabled = false;
+  const spin = $('spin'); if(spin) spin.style.display = 'none';
+  const go = $('go'); if(go) go.disabled = false;
   if(es){ es.close(); es = null; }
 }
 
@@ -320,7 +321,12 @@ function run(query){
   if(!query || query.trim().length < 2) return;
   reset();
   $('go').disabled = true;
-  const results = parseInt($('results').value, 10) || 0;
+  // Clamp to the server's accepted range (2–30) so an out-of-range value
+  // self-corrects instead of triggering a 422. Blank/invalid → 0 = use default.
+  let results = parseInt($('results').value, 10);
+  results = Number.isFinite(results) && results > 0
+    ? Math.min(30, Math.max(2, results)) : 0;
+  if (results) $('results').value = results;  // reflect the clamp back to the UI
   const whisper = $('whisper').checked ? 1 : 0;
   const tiktok = $('tiktok').checked ? 1 : 0;
   const url = `/api/research?q=${encodeURIComponent(query)}&results=${results}&whisper=${whisper}&tiktok=${tiktok}`;
@@ -333,7 +339,7 @@ function run(query){
       renderAnswer(a.summary);
       renderClaims(a.claims);
       renderSources(a.sources);
-      $('progress').querySelector('.sec').innerHTML = 'Done';
+      $('progressLabel').textContent = 'Done';
       if(a.session_id){
         currentSession = a.session_id;
         $('followup').style.display = 'block';
