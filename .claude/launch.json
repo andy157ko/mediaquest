@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mediaquest-web",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["-m", "web.server"],
+      "port": 8000
+    }
+  ]
+}

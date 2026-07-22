@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>MediaQuest — cited answers from video</title>
+<style>
+  :root {
+    --bg: #f7f7f8; --panel: #ffffff; --ink: #1a1a1e; --muted: #6b6b76;
+    --line: #e5e5ea; --accent: #4f46e5; --accent-soft: #eef0ff;
+    --ok: #17803d; --ok-bg: #e7f6ec; --warn: #b45309; --warn-bg: #fdf1de;
+    --bad: #b42318; --bad-bg: #fbeae8; --chip: #f0f0f4;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f0f12; --panel: #17171c; --ink: #ececf0; --muted: #9a9aa6;
+      --line: #26262e; --accent: #8b83ff; --accent-soft: #201f36;
+      --ok: #4ade80; --ok-bg: #10231a; --warn: #fbbf24; --warn-bg: #241c0c;
+      --bad: #f87171; --bad-bg: #241413; --chip: #22222a;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 820px; margin: 0 auto; padding: 32px 20px 80px; }
+  header h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.02em; }
+  header p { margin: 0 0 24px; color: var(--muted); }
+  .logo { color: var(--accent); }
+
+  form.search {
+    display: flex; gap: 8px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 8px; box-shadow: var(--shadow); flex-wrap: wrap;
+  }
+  input[type=text] {
+    flex: 1 1 320px; min-width: 200px; border: none; background: transparent;
+    color: var(--ink); font-size: 16px; padding: 10px 12px; outline: none;
+  }
+  button.go {
+    background: var(--accent); color: #fff; border: none; border-radius: 10px;
+    padding: 10px 18px; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  button.go:disabled { opacity: .55; cursor: default; }
+
+  .opts { display: flex; gap: 16px; align-items: center; margin: 12px 2px 0;
+    color: var(--muted); font-size: 14px; flex-wrap: wrap; }
+  .opts label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  .opts input[type=number] { width: 54px; background: var(--panel);
+    border: 1px solid var(--line); color: var(--ink); border-radius: 8px;
+    padding: 4px 6px; font-size: 14px; }
+  .examples { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .examples button { background: var(--chip); border: 1px solid var(--line);
+    color: var(--muted); border-radius: 999px; padding: 5px 12px; font-size: 13px;
+    cursor: pointer; }
+  .examples button:hover { color: var(--ink); }
+
+  section { margin-top: 28px; }
+  .card { background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 18px 20px; box-shadow: var(--shadow); }
+
+  /* progress */
+  #progress { display: none; }
+  #progress.on { display: block; }
+  .plog { font: 13px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--muted); white-space: pre-wrap; margin: 0; max-height: 240px;
+    overflow: auto; }
+  .plog .now { color: var(--ink); }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--line);
+    border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite;
+    vertical-align: -2px; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* answer */
+  h2.sec { font-size: 13px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 0 0 12px; }
+  .answer p { margin: 0 0 14px; }
+  .answer p:last-child { margin-bottom: 0; }
+  .answer ul { margin: 0 0 14px; padding-left: 22px; }
+  .answer li { margin: 3px 0; }
+  .answer strong { font-weight: 700; }
+  a.cite { color: var(--accent); background: var(--accent-soft); text-decoration: none;
+    font-weight: 600; font-size: .82em; padding: 1px 6px; border-radius: 6px;
+    vertical-align: 1px; }
+  a.cite:hover { filter: brightness(1.08); }
+
+  /* fact-check */
+  .claim { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0;
+    border-top: 1px solid var(--line); }
+  .claim:first-child { border-top: none; }
+  .badge { flex: none; font-size: 12px; font-weight: 600; padding: 3px 9px;
+    border-radius: 999px; white-space: nowrap; }
+  .b-ok { color: var(--ok); background: var(--ok-bg); }
+  .b-warn { color: var(--warn); background: var(--warn-bg); }
+  .b-bad { color: var(--bad); background: var(--bad-bg); }
+  .claim .txt { flex: 1; }
+  .claim .srcs { margin-top: 3px; }
+  .claim .srcs a { color: var(--muted); font-size: 12px; text-decoration: none;
+    margin-right: 6px; }
+
+  /* sources */
+  .src { display: flex; gap: 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .src:first-child { border-top: none; }
+  .src.flash { animation: flash 1.4s ease; }
+  @keyframes flash { 0%,100% { background: transparent; } 20% { background: var(--accent-soft); } }
+  .src .num { flex: none; width: 26px; height: 26px; border-radius: 8px;
+    background: var(--accent-soft); color: var(--accent); font-weight: 700;
+    font-size: 13px; display: grid; place-items: center; }
+  .src img { width: 120px; height: 68px; object-fit: cover; border-radius: 8px;
+    background: var(--chip); flex: none; }
+  .src .meta { flex: 1; min-width: 0; }
+  .src .meta a { color: var(--ink); font-weight: 600; text-decoration: none; }
+  .src .meta a:hover { color: var(--accent); }
+  .src .meta .ch { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  .via { font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px;
+    background: var(--chip); color: var(--muted); margin-left: 8px; vertical-align: 1px; }
+  .via.w { color: var(--warn); background: var(--warn-bg); }
+
+  /* follow-up thread */
+  .turn { padding: 4px 0 14px; border-top: 1px solid var(--line); margin-top: 14px; }
+  .turn:first-child { border-top: none; margin-top: 0; }
+  .turn .q { font-weight: 600; margin-bottom: 8px; display: flex; gap: 8px; }
+  .turn .q::before { content: "?"; flex: none; width: 22px; height: 22px;
+    border-radius: 7px; background: var(--accent-soft); color: var(--accent);
+    font-weight: 700; font-size: 13px; display: grid; place-items: center; }
+  .turn .a { color: var(--ink); }
+  .turn .a .fc { margin-top: 10px; padding-top: 4px; border-top: 1px dashed var(--line); }
+  .followform { margin-top: 16px; }
+
+  .notice { color: var(--muted); }
+  .err { color: var(--bad); }
+  footer { margin-top: 40px; color: var(--muted); font-size: 13px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="logo">◆</span> MediaQuest</h1>
+    <p>Ask a question — get a cited, fact-checked answer built from video transcripts.</p>
+  </header>
+
+  <form class="search" id="form">
+    <input type="text" id="q" autocomplete="off"
+      placeholder="e.g. best gym routine for beginners" />
+    <button class="go" id="go" type="submit">Research</button>
+  </form>
+  <div class="opts">
+    <label>Videos <input type="number" id="results" min="2" max="30" value="6" /></label>
+    <label><input type="checkbox" id="whisper" checked />
+      Whisper fallback <span class="notice">(transcribe audio if captions are blocked)</span></label>
+  </div>
+  <div class="examples" id="examples">
+    <button>best gym routine for beginners</button>
+    <button>how to fix a leaky faucet</button>
+    <button>is creatine safe</button>
+    <button>how to start investing</button>
+  </div>
+
+  <section id="progress" class="card">
+    <h2 class="sec"><span class="spinner" id="spin"></span>Working…</h2>
+    <pre class="plog" id="plog"></pre>
+  </section>
+
+  <section id="answer" class="card" style="display:none">
+    <h2 class="sec">Answer</h2>
+    <div class="answer" id="answerBody"></div>
+  </section>
+
+  <section id="factcheck" class="card" style="display:none">
+    <h2 class="sec">Fact-check · claims by cross-source agreement</h2>
+    <div id="claims"></div>
+  </section>
+
+  <section id="sources" class="card" style="display:none">
+    <h2 class="sec">Sources</h2>
+    <div id="srcList"></div>
+  </section>
+
+  <section id="followup" class="card" style="display:none">
+    <h2 class="sec">Ask a follow-up · answered from these videos</h2>
+    <div id="thread"></div>
+    <form class="search followform" id="followForm">
+      <input type="text" id="followq" autocomplete="off"
+        placeholder="e.g. what about home workouts with no equipment?" />
+      <button class="go" id="followGo" type="submit">Ask</button>
+    </form>
+  </section>
+
+  <footer>Free &amp; local · search + transcripts (yt-dlp) · synthesis (Ollama) · no API keys</footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let es = null;
+let currentSession = null;
+
+function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+// Escape, then apply inline markdown: **bold** and [n] / [n: note] citations.
+function inline(text){
+  let s = esc(text);
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/\[(\d+)(?::\s*([^\]]*))?\]/g, (m, n, note) => {
+    const chip = `<a class="cite" href="#src-${n}" onclick="flashSource(${n})">${n}</a>`;
+    return note ? `${chip} ${note}` : chip;
+  });
+  return s;
+}
+
+function flashSource(n){
+  const el = $('src-' + n);
+  if(!el) return;
+  el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash');
+}
+window.flashSource = flashSource;
+
+// Light markdown → HTML: paragraphs, and `*`/`-` bullet lists.
+function mdToHtml(text){
+  const lines = text.split('\n');
+  let html = '', inList = false, para = [];
+  const closeList = () => { if(inList){ html += '</ul>'; inList = false; } };
+  const flushPara = () => {
+    if(para.length){ html += `<p>${para.map(inline).join('<br>')}</p>`; para = []; }
+  };
+  for(const raw of lines){
+    const l = raw.replace(/\s+$/, '');
+    if(/^\s*[\*\-]\s+/.test(l)){
+      flushPara();
+      if(!inList){ html += '<ul>'; inList = true; }
+      html += `<li>${inline(l.replace(/^\s*[\*\-]\s+/, ''))}</li>`;
+    } else if(l.trim() === ''){
+      flushPara(); closeList();
+    } else {
+      closeList(); para.push(l);
+    }
+  }
+  flushPara(); closeList();
+  return html;
+}
+
+function renderAnswer(text){
+  $('answerBody').innerHTML = mdToHtml(text);
+  $('answer').style.display = 'block';
+}
+
+// Fact-check claims → HTML string (reused by main answer and follow-ups).
+function claimsHtml(claims){
+  if(!claims || !claims.length) return '';
+  const cls = { 'corroborated':'b-ok', 'single-source':'b-warn', 'unverified':'b-bad' };
+  const label = { 'corroborated':'✓ corroborated', 'single-source':'△ single source',
+    'unverified':'✗ unverified' };
+  return claims.map(c => {
+    const srcs = (c.supporting_sources||[]).map(n =>
+      `<a href="#src-${n}" onclick="flashSource(${n})">[${n}]</a>`).join('') || '<span class="notice">no source</span>';
+    return `<div class="claim">
+      <span class="badge ${cls[c.status]||'b-bad'}">${label[c.status]||c.status}</span>
+      <div class="txt">${esc(c.text)}<div class="srcs">${srcs}</div></div></div>`;
+  }).join('');
+}
+
+function renderClaims(claims){
+  if(!claims || !claims.length) return;
+  $('claims').innerHTML = claimsHtml(claims);
+  $('factcheck').style.display = 'block';
+}
+
+function renderSources(sources){
+  if(!sources || !sources.length) return;
+  $('srcList').innerHTML = sources.map(s => {
+    const thumb = s.platform === 'youtube'
+      ? `<img src="https://i.ytimg.com/vi/${s.video_id}/mqdefault.jpg" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`
+      : '';
+    const via = s.transcript_source === 'whisper'
+      ? '<span class="via w">whisper audio</span>'
+      : (s.transcript_source === 'captions' ? '<span class="via">captions</span>' : '');
+    return `<div class="src" id="src-${s.index}">
+      <div class="num">${s.index}</div>${thumb}
+      <div class="meta">
+        <a href="${esc(s.url)}" target="_blank" rel="noopener">${esc(s.title)}</a>${via}
+        <div class="ch">${esc(s.channel)}</div>
+      </div></div>`;
+  }).join('');
+  $('sources').style.display = 'block';
+}
+
+function addProgress(msg){
+  const pl = $('plog');
+  [...pl.querySelectorAll('.now')].forEach(e => e.classList.remove('now'));
+  const line = document.createElement('div');
+  line.className = 'now'; line.textContent = msg;
+  pl.appendChild(line); pl.scrollTop = pl.scrollHeight;
+}
+
+function reset(){
+  ['answer','factcheck','sources','followup'].forEach(id => $(id).style.display = 'none');
+  $('plog').innerHTML = '';
+  $('thread').innerHTML = '';
+  currentSession = null;
+  $('progress').classList.add('on');
+  $('spin').style.display = 'inline-block';
+}
+
+function finish(){
+  $('spin').style.display = 'none';
+  $('go').disabled = false;
+  if(es){ es.close(); es = null; }
+}
+
+function run(query){
+  if(!query || query.trim().length < 2) return;
+  reset();
+  $('go').disabled = true;
+  const results = parseInt($('results').value, 10) || 0;
+  const whisper = $('whisper').checked ? 1 : 0;
+  const url = `/api/research?q=${encodeURIComponent(query)}&results=${results}&whisper=${whisper}`;
+  es = new EventSource(url);
+  es.onmessage = ev => {
+    const d = JSON.parse(ev.data);
+    if(d.type === 'progress'){ addProgress(d.msg); }
+    else if(d.type === 'result'){
+      const a = d.answer;
+      renderAnswer(a.summary);
+      renderClaims(a.claims);
+      renderSources(a.sources);
+      $('progress').querySelector('.sec').innerHTML = 'Done';
+      if(a.session_id){
+        currentSession = a.session_id;
+        $('followup').style.display = 'block';
+      }
+    }
+    else if(d.type === 'error'){
+      $('answerBody').innerHTML = `<p class="err">${esc(d.msg)}</p>`;
+      $('answer').style.display = 'block';
+    }
+    else if(d.type === 'done'){ finish(); }
+  };
+  es.onerror = () => { addProgress('· connection closed'); finish(); };
+}
+
+function runFollowUp(question){
+  question = (question || '').trim();
+  if(!question || !currentSession) return;
+
+  const block = document.createElement('div');
+  block.className = 'turn';
+  block.innerHTML = `<div class="q">${esc(question)}</div>
+    <div class="a"><span class="spinner"></span> thinking…</div>`;
+  $('thread').appendChild(block);
+  const ans = block.querySelector('.a');
+  $('followq').value = '';
+  $('followGo').disabled = true;
+  block.scrollIntoView({ block: 'nearest' });
+
+  const url = `/api/followup?session_id=${encodeURIComponent(currentSession)}`
+    + `&q=${encodeURIComponent(question)}`;
+  const fes = new EventSource(url);
+  fes.onmessage = ev => {
+    const d = JSON.parse(ev.data);
+    if(d.type === 'progress'){
+      ans.innerHTML = `<span class="spinner"></span> ${esc(d.msg)}`;
+    } else if(d.type === 'result'){
+      const fc = claimsHtml(d.answer.claims);
+      ans.innerHTML = mdToHtml(d.answer.summary) + (fc ? `<div class="fc">${fc}</div>` : '');
+    } else if(d.type === 'error'){
+      ans.innerHTML = `<span class="err">${esc(d.msg)}</span>`;
+    } else if(d.type === 'done'){
+      fes.close(); $('followGo').disabled = false;
+    }
+  };
+  fes.onerror = () => { fes.close(); $('followGo').disabled = false; };
+}
+
+$('followForm').addEventListener('submit', e => { e.preventDefault(); runFollowUp($('followq').value); });
+$('form').addEventListener('submit', e => { e.preventDefault(); run($('q').value); });
+$('examples').addEventListener('click', e => {
+  if(e.target.tagName === 'BUTTON'){ $('q').value = e.target.textContent; run(e.target.textContent); }
+});
+</script>
+</body>
+</html>
