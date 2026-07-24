@@ -39,7 +39,9 @@ _MAP_SYSTEM = (
 
 
 def _map_source(source: Source, query: str) -> List[str]:
-    transcript = source.transcript[: config.per_source_chars]
+    transcript = (source.transcript or "")[: config.per_source_chars].strip()
+    if not transcript:
+        return []  # nothing to read (shouldn't normally reach here)
     user = (
         f"QUESTION: {query}\n\n"
         f"VIDEO TITLE: {source.title}\n"
@@ -205,20 +207,27 @@ def research(
     p(f"Reading {len(sources)} videos (extracting key points)…")
     workers = max(1, min(config.concurrency, len(sources)))
     done = 0
+    errors = 0
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {pool.submit(_map_source, s, query): s for s in sources}
         for fut in as_completed(futures):
             s = futures[fut]
             try:
                 s.key_points = fut.result()
-            except llm.LLMError:
+                # Distinguish "read fine, nothing relevant" from an actual failure.
+                tag = f"{len(s.key_points)} points" if s.key_points else "nothing relevant"
+            except llm.LLMError as e:
                 s.key_points = []
+                errors += 1
+                tag = f"⚠ LLM error ({str(e)[:50]})"
             done += 1
-            p(f"  · ({done}/{len(sources)}) [{s.index}] {s.title[:55]} — "
-              f"{len(s.key_points)} points")
+            p(f"  · ({done}/{len(sources)}) [{s.index}] {s.title[:50]} — {tag}")
 
     # Preserve original relevance order for citation numbering.
     used = [s for s in sources if s.key_points]
+    if errors:
+        p(f"  ⚠ {errors} video(s) failed to process (often free-tier rate limits) — "
+          f"answer uses the {len(used)} that succeeded. Lower MQ_CONCURRENCY to reduce this.")
 
     if not used:
         return Answer(
