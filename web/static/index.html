@@ -31,6 +31,11 @@
   header h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: -.02em; }
   header p { margin: 0 0 24px; color: var(--muted); }
   .logo { color: var(--accent); }
+  .engine { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px;
+    background: var(--chip); color: var(--muted); vertical-align: 6px; margin-left: 6px;
+    letter-spacing: .01em; }
+  .engine.groq { color: var(--accent); background: var(--accent-soft); }
+  .engine.ollama { color: var(--warn); background: var(--warn-bg); }
 
   form.search {
     display: flex; gap: 8px; background: var(--panel); border: 1px solid var(--line);
@@ -142,7 +147,7 @@
 <body>
 <div class="wrap">
   <header>
-    <h1><span class="logo">◆</span> MediaQuest</h1>
+    <h1><span class="logo">◆</span> MediaQuest <span id="engine" class="engine" title="Active LLM backend">…</span></h1>
     <p>Ask a question — get a cited, fact-checked answer built from video transcripts.</p>
   </header>
 
@@ -195,7 +200,7 @@
     </form>
   </section>
 
-  <footer>Free &amp; local · search + transcripts (yt-dlp) · synthesis (Ollama) · no API keys</footer>
+  <footer>search + transcripts (yt-dlp) · synthesis: <span id="footerEngine">…</span></footer>
 </div>
 
 <script>
@@ -389,6 +394,15 @@ function runFollowUp(question){
 
 $('followForm').addEventListener('submit', e => { e.preventDefault(); runFollowUp($('followq').value); });
 $('form').addEventListener('submit', e => { e.preventDefault(); run($('q').value); });
+
+// Show which LLM backend is active in the header.
+fetch('/api/info').then(r => r.json()).then(d => {
+  const el = $('engine');
+  el.textContent = `${d.provider} · ${d.model}`;
+  el.classList.add(d.provider === 'groq' ? 'groq' : 'ollama');
+  $('footerEngine').textContent = d.provider === 'groq'
+    ? `Groq · ${d.model} (cloud)` : `Ollama · ${d.model} (local)`;
+}).catch(() => { $('engine').style.display = 'none'; });
 $('examples').addEventListener('click', e => {
   if(e.target.tagName === 'BUTTON'){ $('q').value = e.target.textContent; run(e.target.textContent); }
 });

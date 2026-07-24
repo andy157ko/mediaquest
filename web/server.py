@@ -17,6 +17,7 @@ import os
 import queue
 import secrets
 import sys
+import tempfile
 import threading
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from fastapi.staticfiles import StaticFiles
 
 from mediaquest import pipeline
 from mediaquest.config import config
+from mediaquest.models import Answer, Claim, Source
 
 app = FastAPI(title="MediaQuest")
 
@@ -38,20 +40,61 @@ _STATIC = Path(__file__).resolve().parent / "static"
 # so run one research job at a time. Plenty for a local, single-user tool.
 _lock = threading.Lock()
 
-# In-memory research sessions, so follow-ups can reuse already-gathered sources
-# without re-searching. Keyed by an opaque session id. Fine for a local tool;
-# a persistent store would be the upgrade for multi-user / restart survival.
+# Research sessions let follow-ups reuse already-gathered sources without
+# re-searching. Kept in memory AND mirrored to disk so they survive a server
+# restart (otherwise every restart invalidates open browser sessions).
 # { sid: {"answer": Answer, "turns": [ {"question", "answer"} ] } }
 _sessions: dict = {}
 _MAX_SESSIONS = 50
+_SESSIONS_DIR = Path(tempfile.gettempdir()) / "mediaquest_sessions"
+_SESSIONS_DIR.mkdir(exist_ok=True)
+
+
+def _persist(sid: str, session: dict) -> None:
+    """Mirror a session to disk as JSON (best-effort; never breaks a request)."""
+    try:
+        data = {"answer": session["answer"].to_dict(), "turns": session["turns"]}
+        (_SESSIONS_DIR / f"{sid}.json").write_text(
+            json.dumps(data, ensure_ascii=False)
+        )
+    except Exception:
+        pass
+
+
+def _answer_from_dict(d: dict) -> Answer:
+    return Answer(
+        query=d["query"],
+        summary=d["summary"],
+        sources=[Source(**s) for s in d.get("sources", [])],
+        claims=[Claim(**c) for c in d.get("claims", [])],
+    )
+
+
+def _get_session(sid: str):
+    """Look up a session in memory, falling back to the on-disk copy."""
+    if sid in _sessions:
+        return _sessions[sid]
+    path = _SESSIONS_DIR / f"{sid}.json"
+    if path.exists():
+        try:
+            data = json.loads(path.read_text())
+            session = {"answer": _answer_from_dict(data["answer"]),
+                       "turns": data.get("turns", [])}
+            _sessions[sid] = session
+            return session
+        except Exception:
+            return None
+    return None
 
 
 def _remember(answer) -> str:
     sid = secrets.token_hex(8)
-    # Bound memory: drop the oldest session if we're over the cap.
+    # Bound in-memory size; the disk copy remains for later reload.
     if len(_sessions) >= _MAX_SESSIONS:
         _sessions.pop(next(iter(_sessions)), None)
-    _sessions[sid] = {"answer": answer, "turns": []}
+    session = {"answer": answer, "turns": []}
+    _sessions[sid] = session
+    _persist(sid, session)
     return sid
 
 
@@ -99,7 +142,7 @@ def _research_events(query: str, results: int, whisper: bool, tiktok: bool):
 def _followup_events(session_id: str, question: str):
     """SSE frames for a follow-up answered from a stored session's sources."""
     q: "queue.Queue" = queue.Queue()
-    session = _sessions.get(session_id)
+    session = _get_session(session_id)
 
     if session is None:
         def only_error():
@@ -126,6 +169,7 @@ def _followup_events(session_id: str, question: str):
                 session["turns"].append(
                     {"question": question, "answer": answer.summary}
                 )
+                _persist(session_id, session)  # keep the growing thread on disk
                 payload = answer.to_dict()
                 payload["session_id"] = session_id
                 q.put({"type": "result", "answer": payload})
@@ -169,6 +213,14 @@ def followup(
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/api/info")
+def info():
+    """Which LLM backend is active — shown in the UI header."""
+    provider = config.provider
+    model = config.groq_model if provider == "groq" else config.model
+    return {"provider": provider, "model": model}
 
 
 @app.get("/")
