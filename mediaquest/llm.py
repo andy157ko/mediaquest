@@ -1,14 +1,16 @@
 """LLM access layer.
 
 Deliberately thin and provider-agnostic: the rest of the code calls
-`chat(system, user)` and never touches HTTP. To add Gemini/Groq later,
-implement another Provider and swap it in `get_provider()` — nothing
-else in the codebase changes.
+`chat(system, user)` and never touches HTTP. Providers implement a single
+`chat()` method; `get_provider()` picks one from config. Adding another
+(e.g. Gemini) is one class here — nothing else in the codebase changes.
 """
 
 from __future__ import annotations
 
 import json
+import random
+import time
 from typing import Protocol
 
 import requests
@@ -71,8 +73,83 @@ class OllamaProvider:
         return data.get("message", {}).get("content", "").strip()
 
 
+class GroqProvider:
+    """Groq's OpenAI-compatible chat API. Free tier, very fast, needs a key.
+
+    Free tiers rate-limit (HTTP 429), so we retry with exponential backoff,
+    honoring the server's Retry-After when present.
+    """
+
+    URL = "https://api.groq.com/openai/v1/chat/completions"
+    MAX_RETRIES = 4
+
+    def __init__(self, api_key: str, model: str, timeout: int):
+        self.api_key = api_key
+        self.model = model
+        self.timeout = timeout
+
+    def chat(self, system: str, user: str) -> str:
+        if not self.api_key:
+            raise LLMError(
+                "Provider is 'groq' but no API key is set. Get a free key at "
+                "https://console.groq.com/keys and put it in a .env file as "
+                "GROQ_API_KEY=... (or export GROQ_API_KEY)."
+            )
+        headers = {"Authorization": f"Bearer {self.api_key}"}
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "temperature": 0.2,
+        }
+
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                resp = requests.post(
+                    self.URL, headers=headers, json=payload, timeout=self.timeout
+                )
+            except requests.exceptions.RequestException as e:
+                raise LLMError(f"Could not reach Groq: {e}") from e
+
+            if resp.status_code == 429 or resp.status_code >= 500:
+                if attempt == self.MAX_RETRIES - 1:
+                    raise LLMError(
+                        f"Groq rate-limited/unavailable ({resp.status_code}) after "
+                        f"{self.MAX_RETRIES} tries. Wait a moment or lower "
+                        "MQ_CONCURRENCY."
+                    )
+                # Honor Retry-After if given, else exponential backoff + jitter.
+                wait = resp.headers.get("retry-after")
+                delay = float(wait) if wait else (2 ** attempt) + random.uniform(0, 0.5)
+                time.sleep(delay)
+                continue
+
+            if resp.status_code == 401:
+                raise LLMError("Groq rejected the API key (401). Check GROQ_API_KEY.")
+            if resp.status_code == 404:
+                raise LLMError(
+                    f"Groq model '{self.model}' not found. Set MQ_GROQ_MODEL to a "
+                    "current model (see https://console.groq.com/docs/models)."
+                )
+            if not resp.ok:
+                raise LLMError(f"Groq error {resp.status_code}: {resp.text[:300]}")
+
+            data = resp.json()
+            return data["choices"][0]["message"]["content"].strip()
+
+        raise LLMError("Groq: exhausted retries.")  # unreachable, keeps type-checkers happy
+
+
 def get_provider() -> Provider:
-    """Single place to choose the backend. Swap here to change providers."""
+    """Single place to choose the backend. Controlled by config.provider."""
+    if config.provider == "groq":
+        return GroqProvider(
+            api_key=config.groq_api_key,
+            model=config.groq_model,
+            timeout=config.groq_timeout,
+        )
     return OllamaProvider(
         host=config.ollama_host,
         model=config.model,

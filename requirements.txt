@@ -2,10 +2,11 @@
 yt-dlp>=2024.1.0            # keyless YouTube search + audio download (YT + TikTok)
 youtube-transcript-api>=0.6.2  # captions without downloading video
 ddgs>=5.0.0                # keyless web search — TikTok video discovery
-requests>=2.28.0           # talks to local Ollama
+requests>=2.28.0           # talks to Ollama / Groq
 rich>=13.0.0               # nicer CLI output (optional; CLI degrades without it)
 fastapi>=0.110.0           # web UI backend
 uvicorn[standard]>=0.29.0  # ASGI server for the web UI
+python-dotenv>=1.0.0       # load GROQ_API_KEY etc. from a .env file
 
 # Optional — Whisper audio fallback (MQ_WHISPER_FALLBACK=1). Transcribes a
 # video's audio locally when captions are missing OR YouTube blocks the caption

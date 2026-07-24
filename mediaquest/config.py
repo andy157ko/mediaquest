@@ -7,6 +7,16 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+# Load a project-root .env (if present) so secrets like GROQ_API_KEY don't have
+# to be exported every session. Optional dependency; no-op if not installed.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
 
 
 def _env_int(name: str, default: int) -> int:
@@ -16,16 +26,41 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _default_provider() -> str:
+    """Pick the LLM backend: explicit MQ_PROVIDER wins; otherwise use Groq
+    automatically if a key is present, else local Ollama."""
+    explicit = os.environ.get("MQ_PROVIDER")
+    if explicit:
+        return explicit.lower()
+    if os.environ.get("GROQ_API_KEY") or os.environ.get("MQ_GROQ_API_KEY"):
+        return "groq"
+    return "ollama"
+
+
 @dataclass
 class Config:
-    # --- LLM (Ollama, local & free) ---
+    # --- LLM provider ---
+    # "ollama" (local, free, offline) or "groq" (free cloud API, much faster).
+    # Auto-selects groq if a GROQ_API_KEY is set. Get a free key at
+    # https://console.groq.com/keys
+    provider: str = _default_provider()
+
+    # --- Ollama (local) ---
     ollama_host: str = os.environ.get("MQ_OLLAMA_HOST", "http://localhost:11434")
     # A small, capable default. Swap via `export MQ_MODEL=...`.
     model: str = os.environ.get("MQ_MODEL", "llama3.1:8b")
+    request_timeout: int = _env_int("MQ_TIMEOUT", 300)
+
+    # --- Groq (free cloud, OpenAI-compatible) ---
+    groq_api_key: str = (
+        os.environ.get("GROQ_API_KEY") or os.environ.get("MQ_GROQ_API_KEY") or ""
+    )
+    groq_model: str = os.environ.get("MQ_GROQ_MODEL", "llama-3.3-70b-versatile")
+    groq_timeout: int = _env_int("MQ_GROQ_TIMEOUT", 120)
+
     # How many transcript characters we feed the model per source in the map step.
     # Local models have small context windows, so we truncate defensively.
     per_source_chars: int = _env_int("MQ_PER_SOURCE_CHARS", 12000)
-    request_timeout: int = _env_int("MQ_TIMEOUT", 300)
 
     # --- Platforms ---
     # TikTok is opt-in: it has no free keyword search (we discover via web

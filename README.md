@@ -62,6 +62,28 @@ bash setup.sh
 This installs the Python deps, installs Ollama if needed, and pulls the model
 (`llama3.1:8b` by default — a few GB, downloaded once).
 
+## Faster synthesis: Groq (free cloud LLM)
+
+The local Ollama model is fully offline but slow, especially with many videos.
+For much faster answers, use [Groq](https://console.groq.com)'s free tier — no
+Ollama needed:
+
+1. Get a free API key at <https://console.groq.com/keys>.
+2. Copy `.env.example` to `.env` and paste your key:
+   ```
+   GROQ_API_KEY=gsk_...
+   ```
+3. Run as usual. Setting the key **auto-switches** the app to Groq (no other
+   change needed). Verify with:
+   ```bash
+   .venv/bin/python -c "from mediaquest.config import config; print(config.provider)"
+   ```
+
+Default model is `llama-3.3-70b-versatile`; override with `MQ_GROQ_MODEL`
+(e.g. `llama-3.1-8b-instant` for even more speed). Free tiers rate-limit, so the
+client retries with backoff — if you still hit limits, lower `MQ_CONCURRENCY`.
+To force local even with a key present, set `MQ_PROVIDER=ollama`.
+
 ## Web UI
 
 ```bash
