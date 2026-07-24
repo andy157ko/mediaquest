@@ -57,6 +57,9 @@
   .opts input[type=number] { width: 54px; background: var(--panel);
     border: 1px solid var(--line); color: var(--ink); border-radius: 8px;
     padding: 4px 6px; font-size: 14px; }
+  .opts select { background: var(--panel); border: 1px solid var(--line);
+    color: var(--ink); border-radius: 8px; padding: 4px 8px; font-size: 14px;
+    cursor: pointer; }
   .examples { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
   .examples button { background: var(--chip); border: 1px solid var(--line);
     color: var(--muted); border-radius: 999px; padding: 5px 12px; font-size: 13px;
@@ -158,6 +161,7 @@
   </form>
   <div class="opts">
     <label>Videos <input type="number" id="results" min="2" max="30" value="6" /></label>
+    <label>Engine <select id="provider" title="Which LLM answers"></select></label>
     <label><input type="checkbox" id="whisper" checked />
       Whisper fallback <span class="notice">(transcribe audio if captions are blocked)</span></label>
     <label><input type="checkbox" id="tiktok" />
@@ -334,7 +338,8 @@ function run(query){
   if (results) $('results').value = results;  // reflect the clamp back to the UI
   const whisper = $('whisper').checked ? 1 : 0;
   const tiktok = $('tiktok').checked ? 1 : 0;
-  const url = `/api/research?q=${encodeURIComponent(query)}&results=${results}&whisper=${whisper}&tiktok=${tiktok}`;
+  const provider = $('provider').value || '';
+  const url = `/api/research?q=${encodeURIComponent(query)}&results=${results}&whisper=${whisper}&tiktok=${tiktok}&provider=${provider}`;
   es = new EventSource(url);
   es.onmessage = ev => {
     const d = JSON.parse(ev.data);
@@ -374,7 +379,7 @@ function runFollowUp(question){
   block.scrollIntoView({ block: 'nearest' });
 
   const url = `/api/followup?session_id=${encodeURIComponent(currentSession)}`
-    + `&q=${encodeURIComponent(question)}`;
+    + `&q=${encodeURIComponent(question)}&provider=${$('provider').value || ''}`;
   const fes = new EventSource(url);
   fes.onmessage = ev => {
     const d = JSON.parse(ev.data);
@@ -395,13 +400,34 @@ function runFollowUp(question){
 $('followForm').addEventListener('submit', e => { e.preventDefault(); runFollowUp($('followq').value); });
 $('form').addEventListener('submit', e => { e.preventDefault(); run($('q').value); });
 
-// Show which LLM backend is active in the header.
-fetch('/api/info').then(r => r.json()).then(d => {
+// Engine selector + header/footer badges reflecting the chosen LLM backend.
+let engineModels = {};  // { groq: 'llama-3.3-70b-versatile', ollama: 'llama3.1:8b' }
+
+function updateEngineBadge(provider){
+  const model = engineModels[provider] || '';
   const el = $('engine');
-  el.textContent = `${d.provider} · ${d.model}`;
-  el.classList.add(d.provider === 'groq' ? 'groq' : 'ollama');
-  $('footerEngine').textContent = d.provider === 'groq'
-    ? `Groq · ${d.model} (cloud)` : `Ollama · ${d.model} (local)`;
+  el.textContent = `${provider} · ${model}`;
+  el.classList.remove('groq', 'ollama');
+  el.classList.add(provider === 'groq' ? 'groq' : 'ollama');
+  $('footerEngine').textContent = provider === 'groq'
+    ? `Groq · ${model} (cloud)` : `Ollama · ${model} (local)`;
+}
+
+fetch('/api/info').then(r => r.json()).then(d => {
+  engineModels = { groq: d.groq_model, ollama: d.ollama_model };
+  const sel = $('provider');
+  const opts = [];
+  if (d.available.groq)   opts.push(['groq', `Groq · ${d.groq_model}`]);
+  if (d.available.ollama) opts.push(['ollama', `Ollama · ${d.ollama_model} (local)`]);
+  if (opts.length) {
+    sel.innerHTML = opts.map(([v, l]) => `<option value="${v}">${l}</option>`).join('');
+    sel.value = opts.some(([v]) => v === d.provider) ? d.provider : opts[0][0];
+  } else {
+    sel.innerHTML = `<option>${d.provider}</option>`;  // none reachable; show current
+    sel.disabled = true;
+  }
+  sel.addEventListener('change', () => updateEngineBadge(sel.value));
+  updateEngineBadge(sel.value || d.provider);
 }).catch(() => { $('engine').style.display = 'none'; });
 $('examples').addEventListener('click', e => {
   if(e.target.tagName === 'BUTTON'){ $('q').value = e.target.textContent; run(e.target.textContent); }

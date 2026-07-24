@@ -5,7 +5,8 @@
       "name": "mediaquest-web",
       "runtimeExecutable": ".venv/bin/python",
       "runtimeArgs": ["-m", "web.server"],
-      "port": 8000
+      "port": 8000,
+      "autoPort": true
     }
   ]
 }
